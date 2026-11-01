@@ -1,12 +1,14 @@
 name: Check Swim & Skate pass
 
+# One long job polls every 10-30s for ~5h45m. The hourly schedule keeps one run
+# queued behind it (concurrency), so the next job starts as soon as this one ends.
 on:
   schedule:
-    - cron: "*/10 * * * *"   # GitHub may delay scheduled runs by several minutes
+    - cron: "7 * * * *"
   workflow_dispatch:
     inputs:
       test:
-        description: "Send a test Discord message"
+        description: "Only send a test Discord message"
         type: boolean
         default: false
 
@@ -14,32 +16,32 @@ permissions:
   contents: write
 
 concurrency:
-  group: check-pass
+  group: check-pass-${{ inputs.test && 'test' || 'loop' }}
   cancel-in-progress: false
 
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Check availability
+      - name: Watch availability
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           BRANCHES: ${{ vars.BRANCHES }}
-        run: python check_pass.py ${{ inputs.test && '--test' || '' }}
-
-      - name: Save state
+          COMMIT_STATE: "1"
         run: |
-          if [ -n "$(git status --porcelain state.json)" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
-            git add state.json
-            git commit -m "Update pass state"
-            git push
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          if [ "${{ inputs.test }}" = "true" ]; then
+            python check_pass.py --test
+          else
+            python check_pass.py --loop 20700
           fi
